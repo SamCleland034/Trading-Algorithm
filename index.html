@@ -40,7 +40,7 @@
         <div>
             <h2 class="text-xl font-semibold mb-2">Recent Trades</h2>
             <div id="trade-log" class="bg-white p-4 rounded shadow max-h-96 overflow-y-auto">
-                <p>Loading trade history...</p>
+                <p id="trade-log-placeholder">No recent trades. Starting to fetch trade history...</p>
             </div>
         </div>
     </div>
@@ -50,7 +50,7 @@
         const API_KEY = 'PKGJV4FWYKV0V1HX7FJX';
         const API_SECRET = 'ybZq5el0r5mZ0ct1IP7YPGf6AyzIuJ1bTV0Qup8k';
         const REST_URL = 'https://paper-api.alpaca.markets';
-        const WS_URL = 'wss://stream.data.alpaca.markets/v2/sip'; // Change to 'sip' for live
+        const WS_URL = 'wss://stream.data.alpaca.markets/v2/sip'; // Paper trading WebSocket
 
         // Fetch initial data
         async function fetchInitialData() {
@@ -71,6 +71,9 @@
             const positions = await fetch(`${REST_URL}/v2/positions`, { headers })
                 .then(res => res.json());
             updatePositionsTable(positions);
+
+            // Fetch recent trades
+            await fetchRecentTrades();
         }
 
         // Update positions table
@@ -92,6 +95,40 @@
             });
         }
 
+        // Fetch recent trades via REST API
+        async function fetchRecentTrades() {
+            const headers = {
+                'APCA-API-KEY-ID': API_KEY,
+                'APCA-API-SECRET-KEY': API_SECRET
+            };
+            try {
+                const response = await fetch(`${REST_URL}/v2/orders?status=filled&limit=10`, { headers });
+                const orders = await response.json();
+                const log = document.getElementById('trade-log');
+                log.innerHTML = ''; // Clear placeholder
+                if (orders.length === 0) {
+                    log.innerHTML = '<p class="text-gray-500">No recent trades found.</p>';
+                } else {
+                    orders.forEach(order => {
+                        const tradeDiv = document.createElement('div');
+                        tradeDiv.className = 'border-b py-2';
+                        tradeDiv.innerHTML = `
+                            <span class="font-semibold">${order.side.toUpperCase()}</span> 
+                            ${order.filled_qty} shares of ${order.symbol} at $${parseFloat(order.filled_avg_price).toFixed(2)} 
+                            on ${new Date(order.filled_at).toLocaleString()}
+                        `;
+                        log.appendChild(tradeDiv);
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching trades:', error);
+                document.getElementById('trade-log').innerHTML = '<p class="text-red-500">Error loading trades. Check console.</p>';
+            }
+        }
+
+        // Periodically poll for trades (e.g., every 5 minutes)
+        setInterval(fetchRecentTrades, 5 * 60 * 1000);
+
         // Add trade to log
         function addTradeToLog(trade) {
             const log = document.getElementById('trade-log');
@@ -112,6 +149,7 @@
             const ws = new WebSocket(WS_URL);
 
             ws.onopen = () => {
+                console.log('WebSocket connected, authenticating...');
                 ws.send(JSON.stringify({
                     action: 'authenticate',
                     data: { key: API_KEY, secret: API_SECRET }
@@ -121,6 +159,7 @@
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.stream === 'authorization' && msg.data.status === 'authorized') {
+                    console.log('WebSocket authenticated, subscribing...');
                     ws.send(JSON.stringify({
                         action: 'subscribe',
                         data: { trades: ['*'], account_updates: true }
