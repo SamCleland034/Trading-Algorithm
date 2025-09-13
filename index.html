@@ -30,6 +30,7 @@
                         <th class="p-2 text-left">Entry Price</th>
                         <th class="p-2 text-left">Current Price</th>
                         <th class="p-2 text-left">Unrealized P&L</th>
+                        <th class="p-2 text-left">Return (%)</th>
                     </tr>
                 </thead>
                 <tbody id="positions-body"></tbody>
@@ -46,20 +47,17 @@
     </div>
 
     <script>
-        // Alpaca API credentials
         const API_KEY = 'PKGJV4FWYKV0V1HX7FJX';
         const API_SECRET = 'ybZq5el0r5mZ0ct1IP7YPGf6AyzIuJ1bTV0Qup8k';
         const REST_URL = 'https://paper-api.alpaca.markets';
-        const WS_URL = 'wss://stream.data.alpaca.markets/v2/sip'; // Paper trading WebSocket
+        const WS_URL = 'wss://stream.data.alpaca.markets/v2/sip';
 
-        // Fetch initial data
         async function fetchInitialData() {
             const headers = {
                 'APCA-API-KEY-ID': API_KEY,
                 'APCA-API-SECRET-KEY': API_SECRET
             };
 
-            // Get account info
             const account = await fetch(`${REST_URL}/v2/account`, { headers })
                 .then(res => res.json())
                 .catch(err => console.error('Error fetching account:', err));
@@ -70,32 +68,36 @@
                     `Cash Balance: $${parseFloat(account.cash).toFixed(2)}`;
             }
 
-            // Get positions
             const positions = await fetch(`${REST_URL}/v2/positions`, { headers })
                 .then(res => res.json())
                 .catch(err => console.error('Error fetching positions:', err));
             if (positions) updatePositionsTable(positions);
 
-            // Fetch recent trades
             await fetchRecentTrades();
         }
 
-        // Update positions table
         function updatePositionsTable(positions) {
             const tbody = document.getElementById('positions-body');
             tbody.innerHTML = '';
             if (positions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-2 text-center">No open positions</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="p-2 text-center">No open positions</td></tr>';
             } else {
                 positions.forEach(pos => {
+                    const entryPrice = parseFloat(pos.avg_entry_price);
+                    const currentPrice = parseFloat(pos.current_price);
+                    const returnPct = ((currentPrice - entryPrice) / entryPrice) * 100;
+
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td class="p-2">${pos.symbol}</td>
                         <td class="p-2">${pos.qty}</td>
-                        <td class="p-2">$${parseFloat(pos.avg_entry_price).toFixed(2)}</td>
-                        <td class="p-2">$${parseFloat(pos.current_price).toFixed(2)}</td>
+                        <td class="p-2">$${entryPrice.toFixed(2)}</td>
+                        <td class="p-2">$${currentPrice.toFixed(2)}</td>
                         <td class="p-2 ${pos.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}">
                             $${parseFloat(pos.unrealized_pl).toFixed(2)}
+                        </td>
+                        <td class="p-2 ${returnPct >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${returnPct.toFixed(2)}%
                         </td>
                     `;
                     tbody.appendChild(row);
@@ -103,7 +105,6 @@
             }
         }
 
-        // Fetch recent trades via REST API
         async function fetchRecentTrades() {
             const headers = {
                 'APCA-API-KEY-ID': API_KEY,
@@ -113,7 +114,7 @@
                 const response = await fetch(`${REST_URL}/v2/orders?status=filled&limit=10`, { headers });
                 const orders = await response.json();
                 const log = document.getElementById('trade-log');
-                log.innerHTML = ''; // Clear placeholder
+                log.innerHTML = '';
                 if (orders.length === 0) {
                     log.innerHTML = '<p class="text-gray-500">No recent trades found.</p>';
                 } else {
@@ -134,10 +135,8 @@
             }
         }
 
-        // Periodically poll for trades
-        setInterval(fetchRecentTrades, 5 * 60 * 1000); // Every 5 minutes
+        setInterval(fetchRecentTrades, 5 * 60 * 1000);
 
-        // Add trade to log from WebSocket
         function addTradeToLog(trade) {
             const log = document.getElementById('trade-log');
             const tradeDiv = document.createElement('div');
@@ -148,11 +147,9 @@
                 on ${new Date(trade.filled_at).toLocaleString()}
             `;
             log.prepend(tradeDiv);
-            // Limit to 50 trades
             while (log.children.length > 50) log.removeChild(log.lastChild);
         }
 
-        // Check market status and display message
         function checkMarketStatus() {
             fetch(`${REST_URL}/v2/clock`, {
                 headers: { 'APCA-API-KEY-ID': API_KEY, 'APCA-API-SECRET-KEY': API_SECRET }
@@ -169,7 +166,6 @@
             .catch(err => console.error('Error checking market status:', err));
         }
 
-        // WebSocket for real-time updates
         function startWebSocket() {
             const ws = new WebSocket(WS_URL);
 
@@ -206,7 +202,7 @@
                         `Total Portfolio Value: $${parseFloat(account.portfolio_value).toFixed(2)}`;
                     document.getElementById('cash-balance').textContent = 
                         `Cash Balance: $${parseFloat(account.cash).toFixed(2)}`;
-                    fetchInitialData(); // Refresh positions on account update
+                    fetchInitialData();
                 }
             };
 
@@ -217,11 +213,10 @@
             };
         }
 
-        // Initialize
         fetchInitialData();
         startWebSocket();
         checkMarketStatus();
-        setInterval(checkMarketStatus, 300000); // Check every 5 minutes
+        setInterval(checkMarketStatus, 300000);
     </script>
 </body>
 </html>
