@@ -61,16 +61,20 @@
 
             // Get account info
             const account = await fetch(`${REST_URL}/v2/account`, { headers })
-                .then(res => res.json());
-            document.getElementById('portfolio-value').textContent = 
-                `Total Portfolio Value: $${parseFloat(account.portfolio_value).toFixed(2)}`;
-            document.getElementById('cash-balance').textContent = 
-                `Cash Balance: $${parseFloat(account.cash).toFixed(2)}`;
+                .then(res => res.json())
+                .catch(err => console.error('Error fetching account:', err));
+            if (account) {
+                document.getElementById('portfolio-value').textContent = 
+                    `Total Portfolio Value: $${parseFloat(account.portfolio_value).toFixed(2)}`;
+                document.getElementById('cash-balance').textContent = 
+                    `Cash Balance: $${parseFloat(account.cash).toFixed(2)}`;
+            }
 
             // Get positions
             const positions = await fetch(`${REST_URL}/v2/positions`, { headers })
-                .then(res => res.json());
-            updatePositionsTable(positions);
+                .then(res => res.json())
+                .catch(err => console.error('Error fetching positions:', err));
+            if (positions) updatePositionsTable(positions);
 
             // Fetch recent trades
             await fetchRecentTrades();
@@ -80,19 +84,23 @@
         function updatePositionsTable(positions) {
             const tbody = document.getElementById('positions-body');
             tbody.innerHTML = '';
-            positions.forEach(pos => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td class="p-2">${pos.symbol}</td>
-                    <td class="p-2">${pos.qty}</td>
-                    <td class="p-2">$${parseFloat(pos.avg_entry_price).toFixed(2)}</td>
-                    <td class="p-2">$${parseFloat(pos.current_price).toFixed(2)}</td>
-                    <td class="p-2 ${pos.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}">
-                        $${parseFloat(pos.unrealized_pl).toFixed(2)}
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+            if (positions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-2 text-center">No open positions</td></tr>';
+            } else {
+                positions.forEach(pos => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="p-2">${pos.symbol}</td>
+                        <td class="p-2">${pos.qty}</td>
+                        <td class="p-2">$${parseFloat(pos.avg_entry_price).toFixed(2)}</td>
+                        <td class="p-2">$${parseFloat(pos.current_price).toFixed(2)}</td>
+                        <td class="p-2 ${pos.unrealized_pl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            $${parseFloat(pos.unrealized_pl).toFixed(2)}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
         }
 
         // Fetch recent trades via REST API
@@ -126,10 +134,10 @@
             }
         }
 
-        // Periodically poll for trades (e.g., every 5 minutes)
-        setInterval(fetchRecentTrades, 5 * 60 * 1000);
+        // Periodically poll for trades
+        setInterval(fetchRecentTrades, 5 * 60 * 1000); // Every 5 minutes
 
-        // Add trade to log
+        // Add trade to log from WebSocket
         function addTradeToLog(trade) {
             const log = document.getElementById('trade-log');
             const tradeDiv = document.createElement('div');
@@ -142,6 +150,23 @@
             log.prepend(tradeDiv);
             // Limit to 50 trades
             while (log.children.length > 50) log.removeChild(log.lastChild);
+        }
+
+        // Check market status and display message
+        function checkMarketStatus() {
+            fetch(`${REST_URL}/v2/clock`, {
+                headers: { 'APCA-API-KEY-ID': API_KEY, 'APCA-API-SECRET-KEY': API_SECRET }
+            })
+            .then(res => res.json())
+            .then(data => {
+                const log = document.getElementById('trade-log');
+                if (!data.is_open) {
+                    log.innerHTML = '<p class="text-gray-500">Market closed. No real-time trades until Monday 9:30 AM EDT.</p>';
+                } else if (log.children.length === 0 || log.innerHTML.includes('No recent trades')) {
+                    fetchRecentTrades();
+                }
+            })
+            .catch(err => console.error('Error checking market status:', err));
         }
 
         // WebSocket for real-time updates
@@ -192,23 +217,11 @@
             };
         }
 
-        function checkMarketStatus() {
-            fetch(`${REST_URL}/v2/clock`, {
-                headers: { 'APCA-API-KEY-ID': API_KEY, 'APCA-API-SECRET-KEY': API_SECRET }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (!data.is_open) {
-                    document.getElementById('trade-log').innerHTML = '<p class="text-gray-500">Market closed. No real-time trades until Monday 9:30 AM EDT.</p>';
-                }
-            });
-        }
-        checkMarketStatus();
-        setInterval(checkMarketStatus, 300000); // Check every 5 minutes
-
         // Initialize
         fetchInitialData();
         startWebSocket();
+        checkMarketStatus();
+        setInterval(checkMarketStatus, 300000); // Check every 5 minutes
     </script>
 </body>
 </html>
