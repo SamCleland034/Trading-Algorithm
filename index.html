@@ -192,6 +192,20 @@
             };
         }
 
+        function checkMarketStatus() {
+            fetch(`${REST_URL}/v2/clock`, {
+                headers: { 'APCA-API-KEY-ID': API_KEY, 'APCA-API-SECRET-KEY': API_SECRET }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (!data.is_open) {
+                    document.getElementById('trade-log').innerHTML = '<p class="text-gray-500">Market closed. No real-time trades until Monday 9:30 AM EDT.</p>';
+                }
+            });
+        }
+        checkMarketStatus();
+        setInterval(checkMarketStatus, 300000); // Check every 5 minutes
+
         // Initialize
         fetchInitialData();
         startWebSocket();
